@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment and Secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.staging
+!.env.example
+
+# Kubernetes credentials & Kubeconfig files
+kubeconfig/
+*.kubeconfig
+*kubeconfig*.yaml
+*kubeconfig*.yml
+
+# Pushr Runtime & Data Directories
+repos/
+/repos/
+registry/
+registry-data/
+/registry-data/
+
+# Temporary Build Directories
+tmp/
+temp/
+.tmp/
+pushr-build-*/
+/scratch/
+
+# Build outputs
+dist/
+build/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# System
+.DS_Store
+Thumbs.db
