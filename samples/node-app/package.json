@@ -1,0 +1,12 @@
+{
+  "name": "sample-node-app",
+  "version": "1.0.0",
+  "description": "Pushr sample node application using Cloud Native Buildpacks",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

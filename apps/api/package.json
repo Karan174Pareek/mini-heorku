@@ -1,0 +1,18 @@
+{
+  "name": "pushr-api",
+  "version": "1.0.0",
+  "description": "Pushr Control Plane API and Build Pipeline",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "test": "node test/builder.test.js"
+  },
+  "dependencies": {
+    "@kubernetes/client-node": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongoose": "^8.6.1"
+  }
+}

@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pushr-builds
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pushr-builder-sa
+  namespace: pushr-builds
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pushr-builder-role
+  namespace: pushr-builds
+rules:
+  - apiGroups: ["batch", ""]
+    resources: ["jobs", "pods", "pods/log"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pushr-builder-rolebinding
+  namespace: pushr-builds
+subjects:
+  - kind: ServiceAccount
+    name: pushr-builder-sa
+    namespace: pushr-builds
+roleRef:
+  kind: Role
+  name: pushr-builder-role
+  apiGroup: rbac.authorization.k8s.io
