@@ -17,7 +17,7 @@ function Assert-Check {
         Write-Host "[PASS] $Name" -ForegroundColor Green
         $script:passCount++
     } catch {
-        Write-Host "[FAIL] $Name: $_" -ForegroundColor Red
+        Write-Host "[FAIL] ${Name}: $_" -ForegroundColor Red
     }
 }
 
@@ -35,7 +35,8 @@ Assert-Check "Cluster nodes are Ready" {
 
 # Check 2: Cert-Manager & Self-Signed Issuer Ready
 Assert-Check "cert-manager and pushr-selfsigned-issuer are Ready" {
-    $issuerStatus = kubectl get clusterissuer pushr-selfsigned-issuer -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>&1
+    $issuerJson = kubectl get clusterissuer pushr-selfsigned-issuer -o json | ConvertFrom-Json
+    $issuerStatus = ($issuerJson.status.conditions | Where-Object { $_.type -eq "Ready" }).status
     if ($issuerStatus -ne "True") {
         throw "ClusterIssuer pushr-selfsigned-issuer is not Ready. Status: $issuerStatus"
     }
@@ -43,21 +44,21 @@ Assert-Check "cert-manager and pushr-selfsigned-issuer are Ready" {
 }
 
 # Check 3: Local Registry Push from Host & Pull from Inside Cluster
-Assert-Check "Registry push to localhost:5000 and pull from inside cluster" {
-    Write-Host "Tagging and pushing test image to localhost:5000..."
+Assert-Check "Registry push to localhost:5001 and pull from inside cluster" {
+    Write-Host "Tagging and pushing test image to localhost:5001..."
     docker pull alpine:latest | Out-Null
-    docker tag alpine:latest localhost:5000/pushr-test-alpine:v1
-    docker push localhost:5000/pushr-test-alpine:v1
-    if ($LASTEXITCODE -ne 0) { throw "Failed to push image to localhost:5000" }
+    docker tag alpine:latest localhost:5001/pushr-test-alpine:v1
+    docker push localhost:5001/pushr-test-alpine:v1
+    if ($LASTEXITCODE -ne 0) { throw "Failed to push image to localhost:5001" }
 
     Write-Host "Creating test pod inside cluster pulling k3d-pushr-registry:5000/pushr-test-alpine:v1..."
     kubectl delete pod test-registry-pull --ignore-not-found=true 2>&1 | Out-Null
     kubectl run test-registry-pull `
         --image=k3d-pushr-registry:5000/pushr-test-alpine:v1 `
         --restart=Never `
-        --command -- /bin/echo "REGISTRY_PULL_SUCCESS"
+        --command -- /bin/sh -c "echo REGISTRY_PULL_SUCCESS && sleep 10"
 
-    kubectl wait --for=condition=Ready pod/test-registry-pull --timeout=45s 2>&1 | Out-Null
+    kubectl wait --for=condition=Ready pod/test-registry-pull --timeout=45s
     $logs = kubectl logs pod/test-registry-pull 2>&1
     Write-Host "Pod log output: $logs"
     if ($logs -notmatch "REGISTRY_PULL_SUCCESS") {
@@ -91,10 +92,11 @@ Assert-Check "Test workload reachable via HTTPS at https://test.pushr.localhost"
 
     Write-Host "Testing HTTPS request to https://test.pushr.localhost..."
     # Use curl.exe with -k (insecure for self-signed) and resolve to 127.0.0.1
-    $response = curl.exe -k -s -w "\nHTTP_STATUS:%{http_code}" --resolve "test.pushr.localhost:443:127.0.0.1" https://test.pushr.localhost/
-    Write-Host $response
-    if ($response -notmatch "HTTP_STATUS:200") {
-        throw "HTTPS request did not return HTTP 200. Response: $response"
+    $response = curl.exe -k -s -w "`nHTTP_STATUS:%{http_code}" --resolve "test.pushr.localhost:443:127.0.0.1" https://test.pushr.localhost/
+    $responseStr = $response -join "`n"
+    Write-Host $responseStr
+    if ($responseStr -notmatch "HTTP_STATUS:200") {
+        throw "HTTPS request did not return HTTP 200. Response: $responseStr"
     }
 }
 

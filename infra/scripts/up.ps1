@@ -29,13 +29,13 @@ if (-not (Get-Command kubectl -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-Write-Host "==> Checking if host port 5000 is free for container registry..." -ForegroundColor Cyan
-$port5000InUse = Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue
-if ($port5000InUse) {
-    Write-Error "Host port 5000 is already in use by process ID $($port5000InUse[0].OwningProcess). Please free port 5000 before proceeding."
+Write-Host "==> Checking if host port 5001 is free for container registry..." -ForegroundColor Cyan
+$port5001InUse = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue
+if ($port5001InUse) {
+    Write-Error "Host port 5001 is already in use by process ID $($port5001InUse[0].OwningProcess). Please free port 5001 before proceeding."
     exit 1
 }
-Write-Host "Port 5000 is free." -ForegroundColor Green
+Write-Host "Port 5001 is free." -ForegroundColor Green
 
 Write-Host "==> Checking k3d cluster 'pushr'..." -ForegroundColor Cyan
 $existingClusters = k3d cluster list -o json | ConvertFrom-Json
@@ -76,4 +76,4 @@ $issuerFile = Join-Path $PSScriptRoot "..\manifests\cert-manager\cluster-issuer.
 Start-Sleep -Seconds 3
 kubectl apply -f $issuerFile
 
-Write-Host "==> Infrastructure bootstrap complete! Traefik, registry:5000, and cert-manager are ready." -ForegroundColor Green
+Write-Host "==> Infrastructure bootstrap complete! Traefik, registry:5001, and cert-manager are ready." -ForegroundColor Green

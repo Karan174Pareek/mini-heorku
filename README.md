@@ -18,7 +18,7 @@ graph TD
         GitServer -->|Post-Receive Hook| API[Pushr API Service]
         API --> DB[(MongoDB Mongoose)]
         API --> Builder[Builder Engine: Dockerfile / Buildpacks]
-        Builder -->|Push image:tag| Registry[Local Registry :5000]
+        Builder -->|Push image:tag| Registry[Local Registry :5001 (host) / :5000 (cluster)]
         API -->|K8s Deployment / Service / Ingress| Cluster[Kubernetes Cluster]
     end
 

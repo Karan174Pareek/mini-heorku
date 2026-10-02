@@ -13,9 +13,9 @@ ports:
       - loadbalancer
 registries:
   create:
-    name: pushr-registry
+    name: k3d-pushr-registry
     host: "0.0.0.0"
-    hostPort: "5000"
+    hostPort: "5001"
 options:
   k3d:
     wait: true

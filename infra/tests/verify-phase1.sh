@@ -43,17 +43,17 @@ assert_check "cert-manager and pushr-selfsigned-issuer are Ready" check_issuer
 
 # Check 3: Registry Push & Pull
 check_registry() {
-    echo "Pushing test image to localhost:5000..."
+    echo "Pushing test image to localhost:5001..."
     docker pull alpine:latest >/dev/null
-    docker tag alpine:latest localhost:5000/pushr-test-alpine:v1
-    docker push localhost:5000/pushr-test-alpine:v1
+    docker tag alpine:latest localhost:5001/pushr-test-alpine:v1
+    docker push localhost:5001/pushr-test-alpine:v1
 
     echo "Running test pod inside cluster..."
     kubectl delete pod test-registry-pull --ignore-not-found=true >/dev/null 2>&1
     kubectl run test-registry-pull \
         --image=k3d-pushr-registry:5000/pushr-test-alpine:v1 \
         --restart=Never \
-        --command -- /bin/echo "REGISTRY_PULL_SUCCESS"
+        --command -- /bin/sh -c "echo REGISTRY_PULL_SUCCESS && sleep 10"
 
     kubectl wait --for=condition=Ready pod/test-registry-pull --timeout=45s >/dev/null 2>&1
     local logs
@@ -62,7 +62,7 @@ check_registry() {
     kubectl delete pod test-registry-pull --ignore-not-found=true >/dev/null 2>&1
     echo "${logs}" | grep -q "REGISTRY_PULL_SUCCESS"
 }
-assert_check "Registry push to localhost:5000 and pull from inside cluster" check_registry
+assert_check "Registry push to localhost:5001 and pull from inside cluster" check_registry
 
 # Check 4: Ingress HTTPS Reachable
 check_ingress() {

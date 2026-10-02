@@ -14,7 +14,7 @@ We use **k3d**.
 ### Rationale
 1. **Speed & Resource Efficiency**: k3s is stripped of legacy cloud providers and has a sub-30-second boot time.
 2. **Built-in Traefik Ingress**: k3s ships with Traefik ingress controller enabled out of the box, reducing bootstrap complexity.
-3. **Integrated Container Registry**: k3d provides native multi-cluster registry support (`k3d registry create`), automatically creating bridge networks and resolving internal DNS names (`k3d-pushr-registry:5000`) for seamless pod image pulling without complicated self-signed registry certificates.
+3. **Integrated Container Registry**: k3d provides native multi-cluster registry support (`k3d registry create`), automatically creating bridge networks and resolving internal DNS names (`k3d-pushr-registry:5000` internally, exposed at `localhost:5001` on host) for seamless pod image pulling without complicated self-signed registry certificates.
 
 ---
 

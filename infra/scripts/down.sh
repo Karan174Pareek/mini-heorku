@@ -11,6 +11,6 @@ echo "==> Deleting k3d cluster 'pushr'..."
 k3d cluster delete pushr 2>/dev/null || true
 
 echo "==> Deleting registry 'pushr-registry'..."
-k3d registry delete pushr-registry 2>/dev/null || true
+k3d registry delete k3d-pushr-registry pushr-registry 2>/dev/null || true
 
 echo "==> Teardown complete."

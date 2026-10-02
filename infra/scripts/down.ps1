@@ -10,6 +10,6 @@ Write-Host "==> Deleting k3d cluster 'pushr'..." -ForegroundColor Cyan
 k3d cluster delete pushr
 
 Write-Host "==> Deleting registry 'pushr-registry'..." -ForegroundColor Cyan
-k3d registry delete pushr-registry
+k3d registry delete k3d-pushr-registry pushr-registry
 
 Write-Host "==> Teardown complete." -ForegroundColor Green
