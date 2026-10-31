@@ -87,6 +87,19 @@ router.get('/:slug', async (req, res) => {
 });
 
 /**
+ * GET /api/apps/:slug/releases
+ * Lists releases for an app, newest first.
+ */
+router.get('/:slug/releases', async (req, res) => {
+  try {
+    const releases = await Release.find({ appSlug: req.params.slug }).sort({ createdAt: -1 });
+    res.json(releases);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
  * GET /api/apps/:slug/status
  * Queries live Kubernetes Deployment status for the app.
  */
