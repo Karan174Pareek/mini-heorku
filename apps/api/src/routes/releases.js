@@ -3,12 +3,13 @@ const router = express.Router();
 const Release = require('../models/Release');
 const buildQueue = require('../services/builder/BuildQueue');
 const deployer = require('../services/deployer/Deployer');
+const { requireInternalSecret } = require('../middleware/auth');
 
 /**
  * POST /api/releases/:id/deploy
  * Manually deploys or re-deploys an existing release without rebuilding.
  */
-router.post('/:id/deploy', async (req, res) => {
+router.post('/:id/deploy', requireInternalSecret, async (req, res) => {
   try {
     const release = await Release.findById(req.params.id);
     if (!release) {

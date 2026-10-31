@@ -2,9 +2,13 @@
 $ErrorActionPreference = "Continue"
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+$env:TEST_MODE = "true"
 
 $passCount = 0
 $totalCount = 6
+
+$internalSecret = "pushr_internal_shared_secret_2026"
+$internalHeaders = @{ "X-Pushr-Internal-Secret" = $internalSecret }
 
 function Assert-Check {
     param(
@@ -23,6 +27,7 @@ function Assert-Check {
 
 Write-Host "==========================================" -ForegroundColor Magenta
 Write-Host "   PUSHR PHASE 3 VERIFICATION TEST SUITE   " -ForegroundColor Magenta
+Write-Host "   [TEST_MODE=true active for builder/deployer synthetic tests]" -ForegroundColor Yellow
 Write-Host "==========================================" -ForegroundColor Magenta
 
 # Check 1: Node App with BuildpackBuilder
@@ -34,7 +39,7 @@ Assert-Check "1. Push node-app: BuildpackBuilder -> queued -> building -> succee
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json"
+    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     $script:firstReleaseId = $releaseId
     Write-Host "Release created with ID: $releaseId"
@@ -70,7 +75,7 @@ Assert-Check "2. Push python-app: DockerfileBuilder -> Kaniko -> succeeded & ima
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json"
+    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     if (-not $script:firstReleaseId) { $script:firstReleaseId = $releaseId }
     Write-Host "Release created with ID: $releaseId"
@@ -137,7 +142,7 @@ Assert-Check "4. Broken Dockerfile: release marked failed, log contains real err
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json"
+    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
 
     $status = "queued"
@@ -163,7 +168,7 @@ Assert-Check "5. Push identical SHA again: existing image reused without rebuild
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json"
+    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $newReleaseId = $res.releaseId
 
     $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$newReleaseId"

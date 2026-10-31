@@ -9,10 +9,11 @@ const { spawn } = require('child_process');
  *
  * @param {string} repoPath - Path to bare git repository
  * @param {string} commitSha - The commit SHA to export
- * @param {string} [appSlug] - App slug for sample fallback
+ * @param {string} [appSlug] - App slug
  * @returns {Promise<{ sourceDir: string, hasDockerfile: boolean, cleanup: () => Promise<void> }>}
  */
 async function exportCommit(repoPath, commitSha, appSlug) {
+  const isTestMode = process.env.TEST_MODE === 'true';
   const prefix = path.join(os.tmpdir(), `pushr-build-${commitSha ? commitSha.substring(0, 8) : 'export'}-`);
   const tempDir = await fs.promises.mkdtemp(prefix);
 
@@ -29,11 +30,21 @@ async function exportCommit(repoPath, commitSha, appSlug) {
   try {
     let exported = false;
 
-    // 1. If repoPath is a directory on disk, export commit using git archive
-    if (repoPath && fs.existsSync(repoPath)) {
+    // 1. Export commit from the real bare repo inside pushr-git pod in pushr-system
+    if (appSlug && commitSha) {
       try {
         await new Promise((resolve, reject) => {
-          const gitArchive = spawn('git', ['archive', commitSha], { cwd: repoPath });
+          const gitArchive = spawn('kubectl', [
+            'exec',
+            '-n', 'pushr-system',
+            'deployment/pushr-git',
+            '--',
+            'git',
+            `--git-dir=/repos/${appSlug}.git`,
+            'archive',
+            commitSha,
+          ]);
+
           const tarExtract = spawn('tar', ['-x', '-C', tempDir]);
 
           gitArchive.stdout.pipe(tarExtract.stdin);
@@ -44,20 +55,31 @@ async function exportCommit(repoPath, commitSha, appSlug) {
 
           tarExtract.on('close', code => {
             if (code === 0) resolve();
-            else reject(new Error(`Failed to extract commit archive (code ${code}): ${errorOutput}`));
+            else reject(new Error(`git archive extract failed (code ${code}): ${errorOutput}`));
           });
 
           gitArchive.on('error', reject);
           tarExtract.on('error', reject);
         });
-        exported = true;
-      } catch (gitErr) {
-        // Fall back to sample directory
+
+        // Verify that files were actually extracted
+        const files = await fs.promises.readdir(tempDir);
+        if (files.length > 0) {
+          exported = true;
+        }
+      } catch (err) {
+        if (!isTestMode) {
+          throw new Error(`Real git archive export failed for '${appSlug}' (commit ${commitSha}): ${err.message}`);
+        }
       }
     }
 
-    // 2. Fallback for sample apps / integration tests
+    // 2. Fallback for sample apps / synthetic tests ONLY when TEST_MODE=true
     if (!exported) {
+      if (!isTestMode) {
+        throw new Error(`TEST_MODE is disabled and no bare repo exists for app '${appSlug}' (commit ${commitSha})`);
+      }
+
       if (appSlug === 'broken-app') {
         const brokenDockerfile = 'FROM alpine:latest\nRUN echo "Intentional build failure" && exit 1\n';
         await fs.promises.writeFile(path.join(tempDir, 'Dockerfile'), brokenDockerfile);

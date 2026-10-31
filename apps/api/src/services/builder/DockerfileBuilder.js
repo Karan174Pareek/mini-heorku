@@ -73,8 +73,19 @@ class DockerfileBuilder extends Builder {
                 command: ['/bin/sh', '-c'],
                 args: [
                   `echo "Fetching source tarball for release ${release._id || release.id}..." && ` +
-                  `curl -f -sSL "${apiInternalUrl}/api/internal/releases/${release._id || release.id}/tarball" | tar -xz -C /workspace && ` +
+                  `curl -f -sSL -H "X-Pushr-Internal-Secret: $INTERNAL_SECRET" "${apiInternalUrl}/api/internal/releases/${release._id || release.id}/tarball" | tar -xz -C /workspace && ` +
                   `echo "Source successfully unpacked into /workspace"`
+                ],
+                env: [
+                  {
+                    name: 'INTERNAL_SECRET',
+                    valueFrom: {
+                      secretKeyRef: {
+                        name: 'pushr-internal-secret',
+                        key: 'secret',
+                      },
+                    },
+                  },
                 ],
                 volumeMounts: [
                   {

@@ -1,0 +1,13 @@
+{
+  "name": "pushr-git-server",
+  "version": "1.0.0",
+  "description": "Pushr Smart HTTP Git Server with Token Auth and Post-Receive Hook",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
+

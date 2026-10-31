@@ -11,7 +11,11 @@ const AppSchema = new mongoose.Schema({
   },
   gitToken: {
     type: String,
-    required: true,
+    required: false,
+  },
+  gitTokenHash: {
+    type: String,
+    required: false,
   },
   currentRelease: {
     type: mongoose.Schema.Types.ObjectId,

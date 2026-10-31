@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pushr-system
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pushr-internal-secret
+  namespace: pushr-system
+type: Opaque
+stringData:
+  secret: pushr_internal_shared_secret_2026
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pushr-internal-secret
+  namespace: pushr-builds
+type: Opaque
+stringData:
+  secret: pushr_internal_shared_secret_2026
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pushr-repos-pvc
+  namespace: pushr-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pushr-git
+  namespace: pushr-system
+  labels:
+    app: pushr-git
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pushr-git
+  template:
+    metadata:
+      labels:
+        app: pushr-git
+    spec:
+      hostAliases:
+        - ip: 192.168.65.254
+          hostnames:
+            - host.k3d.internal
+      containers:
+        - name: git-server
+          image: k3d-pushr-registry:5000/pushr/git-server:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+            - name: REPOS_PATH
+              value: "/repos"
+            - name: API_INTERNAL_URL
+              value: "http://host.k3d.internal:3000"
+            - name: PUSHR_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pushr-internal-secret
+                  key: secret
+          volumeMounts:
+            - name: repos
+              mountPath: /repos
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: repos
+          persistentVolumeClaim:
+            claimName: pushr-repos-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pushr-git
+  namespace: pushr-system
+  labels:
+    app: pushr-git
+spec:
+  type: ClusterIP
+  selector:
+    app: pushr-git
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pushr-git-ingress
+  namespace: pushr-system
+  annotations:
+    ingress.class: traefik
+    cert-manager.io/cluster-issuer: pushr-selfsigned-issuer
+spec:
+  tls:
+    - hosts:
+        - git.pushr.localhost
+      secretName: pushr-git-tls
+  rules:
+    - host: git.pushr.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pushr-git
+                port:
+                  number: 8080
+

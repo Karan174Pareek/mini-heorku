@@ -13,7 +13,7 @@ class Deployer {
    */
   async deploy(release, options = {}) {
     const onLog = options.onLog || (() => {});
-    const timeoutMs = options.timeoutMs || parseInt(process.env.DEPLOY_TIMEOUT_SECONDS || '120', 10) * 1000;
+    const timeoutMs = options.timeoutMs || parseInt(process.env.ROLLOUT_TIMEOUT_SECONDS || process.env.DEPLOY_TIMEOUT_SECONDS || '120', 10) * 1000;
     const appSlug = release.appSlug;
     const namespace = `apps-${appSlug}`;
 
