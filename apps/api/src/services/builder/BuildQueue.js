@@ -3,6 +3,7 @@ const Release = require('../../models/Release');
 const { exportCommit } = require('../sourceExport');
 const DockerfileBuilder = require('./DockerfileBuilder');
 const BuildpackBuilder = require('./BuildpackBuilder');
+const deployer = require('../deployer/Deployer');
 
 class BuildQueue extends EventEmitter {
   constructor(options = {}) {
@@ -44,6 +45,17 @@ class BuildQueue extends EventEmitter {
       await release.save();
 
       this.emit(`log:${release._id}`, release.buildLog);
+
+      // Auto-deploy reused image
+      deployer.deploy(release, {
+        onLog: (chunk) => this.emit(`log:${release._id}`, chunk),
+      }).then(() => {
+        this.emit(`done:${release._id}`, { status: 'succeeded', image: release.image, deployStatus: 'deployed' });
+      }).catch((deployErr) => {
+        console.error(`Deploy error for release ${release._id}:`, deployErr.message);
+        this.emit(`done:${release._id}`, { status: 'succeeded', image: release.image, deployStatus: 'failed' });
+      });
+
       this.emit(`done:${release._id}`, { status: 'succeeded', image: release.image });
       return release;
     }
@@ -118,7 +130,19 @@ class BuildQueue extends EventEmitter {
       await release.save();
 
       appendLog(`[Pushr Builder] Build succeeded! Image: ${buildResult.image}\n`);
-      this.emit(`done:${release._id}`, { status: 'succeeded', image: buildResult.image });
+
+      // 5. Trigger Deployer automatically
+      try {
+        await deployer.deploy(release, { onLog: appendLog });
+      } catch (deployErr) {
+        appendLog(`[Pushr Deployer ERROR] ${deployErr.message}\n`);
+      }
+
+      this.emit(`done:${release._id}`, {
+        status: release.status,
+        image: release.image,
+        deployStatus: release.deployStatus,
+      });
     } catch (err) {
       release.status = 'failed';
       release.error = err.message;

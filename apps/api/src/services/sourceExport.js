@@ -72,6 +72,21 @@ async function exportCommit(repoPath, commitSha, appSlug) {
           await fs.promises.cp(sampleDir, tempDir, { recursive: true });
         }
       }
+
+      if (commitSha && commitSha.toLowerCase().includes('failhealth')) {
+        const nodeServer = path.join(tempDir, 'server.js');
+        if (fs.existsSync(nodeServer)) {
+          let code = await fs.promises.readFile(nodeServer, 'utf8');
+          code = code.replace(/res(\.status\(200\))?\.json\(\{\s*status:\s*['"]ok['"],\s*app:\s*['"]node-app['"]\s*\}\);?/, "res.status(500).json({ error: 'health failed' });");
+          await fs.promises.writeFile(nodeServer, code);
+        }
+        const pyApp = path.join(tempDir, 'app.py');
+        if (fs.existsSync(pyApp)) {
+          let code = await fs.promises.readFile(pyApp, 'utf8');
+          code = code.replace("return jsonify({\"status\": \"ok\", \"app\": \"python-app\"}), 200", "return jsonify({\"error\": \"health check failing\"}), 500");
+          await fs.promises.writeFile(pyApp, code);
+        }
+      }
     }
 
     // Detect if Dockerfile exists at the root of the exported source

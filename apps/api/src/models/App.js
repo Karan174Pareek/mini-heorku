@@ -18,6 +18,15 @@ const AppSchema = new mongoose.Schema({
     ref: 'Release',
     default: null,
   },
+  deployStatus: {
+    type: String,
+    enum: ['pending', 'deploying', 'deployed', 'failed'],
+    default: 'pending',
+  },
+  deployedAt: {
+    type: Date,
+    default: null,
+  },
   envVars: {
     type: Map,
     of: String,

@@ -11,6 +11,12 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', app: 'node-app' });
 });
 
-app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
   console.log(`Node app listening on port ${port}`);
+});
+
+process.on('SIGTERM', () => {
+  server.close(() => {
+    process.exit(0);
+  });
 });

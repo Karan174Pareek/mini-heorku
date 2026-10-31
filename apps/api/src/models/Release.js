@@ -54,6 +54,20 @@ const ReleaseSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  deployStatus: {
+    type: String,
+    enum: ['pending', 'deploying', 'deployed', 'failed'],
+    default: 'pending',
+    index: true,
+  },
+  deployedAt: {
+    type: Date,
+    default: null,
+  },
+  deployError: {
+    type: String,
+    default: null,
+  },
 }, {
   timestamps: true,
 });

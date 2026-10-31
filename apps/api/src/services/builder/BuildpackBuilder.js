@@ -17,7 +17,7 @@ class BuildpackBuilder extends Builder {
     const {
       registryHost = process.env.REGISTRY_HOST_INTERNAL || 'k3d-pushr-registry:5000',
       namespace = process.env.BUILDS_NAMESPACE || 'pushr-builds',
-      apiInternalUrl = process.env.API_INTERNAL_URL || 'http://pushr-api:3000',
+      apiInternalUrl = process.env.API_INTERNAL_URL || 'http://host.k3d.internal:3000',
       sourceDir,
       onLog = () => {},
       signal,
@@ -64,6 +64,12 @@ class BuildpackBuilder extends Builder {
             spec: {
               restartPolicy: 'Never',
               securityContext: { fsGroup: 1000 },
+              hostAliases: [
+                {
+                  ip: process.env.HOST_GATEWAY_IP || '192.168.65.254',
+                  hostnames: ['host.k3d.internal'],
+                },
+              ],
               volumes: [
                 {
                   name: 'workspace',
@@ -104,6 +110,7 @@ class BuildpackBuilder extends Builder {
                 {
                   name: 'cnb-creator',
                   image: this.builderImage,
+                  imagePullPolicy: 'IfNotPresent',
                   command: ['/cnb/lifecycle/creator'],
                   args: [
                     '-app=/workspace',

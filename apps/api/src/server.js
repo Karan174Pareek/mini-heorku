@@ -1,9 +1,10 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,9 +16,11 @@ app.use(express.json());
 // Routes
 const releasesRouter = require('./routes/releases');
 const internalRouter = require('./routes/internal');
+const appsRouter = require('./routes/apps');
 
 app.use('/api/releases', releasesRouter);
 app.use('/api/internal/releases', internalRouter);
+app.use('/api/apps', appsRouter);
 
 app.get('/health', (req, res) => {
   res.json({

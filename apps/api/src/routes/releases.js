@@ -2,6 +2,31 @@ const express = require('express');
 const router = express.Router();
 const Release = require('../models/Release');
 const buildQueue = require('../services/builder/BuildQueue');
+const deployer = require('../services/deployer/Deployer');
+
+/**
+ * POST /api/releases/:id/deploy
+ * Manually deploys or re-deploys an existing release without rebuilding.
+ */
+router.post('/:id/deploy', async (req, res) => {
+  try {
+    const release = await Release.findById(req.params.id);
+    if (!release) {
+      return res.status(404).json({ error: 'Release not found' });
+    }
+    if (!release.image) {
+      return res.status(400).json({ error: 'Release does not have an image to deploy' });
+    }
+
+    const result = await deployer.deploy(release);
+    res.json({
+      message: 'Deployment complete',
+      ...result,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /**
  * GET /api/releases/:id
