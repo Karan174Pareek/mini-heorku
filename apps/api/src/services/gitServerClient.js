@@ -34,6 +34,27 @@ class GitServerClient {
       proc.on('error', reject);
     });
   }
+  /**
+   * Deletes a bare git repository on the PVC in pushr-system.
+   *
+   * @param {string} slug - Application slug
+   * @returns {Promise<void>}
+   */
+  async deleteRepo(slug) {
+    return new Promise((resolve) => {
+      const proc = spawn('kubectl', [
+        'exec',
+        '-n', 'pushr-system',
+        'deployment/pushr-git',
+        '--',
+        'rm',
+        '-rf',
+        `/repos/${slug}.git`,
+      ]);
+      proc.on('close', () => resolve());
+      proc.on('error', () => resolve());
+    });
+  }
 }
 
 module.exports = new GitServerClient();

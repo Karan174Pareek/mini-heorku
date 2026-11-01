@@ -19,6 +19,7 @@ const internalRouter = require('./routes/internal');
 const appsRouter = require('./routes/apps');
 
 app.use('/api/releases', releasesRouter);
+app.use('/api/internal', internalRouter);
 app.use('/api/internal/releases', internalRouter);
 app.use('/api/apps', appsRouter);
 

@@ -4,7 +4,49 @@ const os = require('os');
 const { spawn } = require('child_process');
 
 /**
- * Exports a specific git commit from a bare repo to a clean temporary directory.
+ * Checks if a commit exists in the bare repo inside pushr-git pod.
+ */
+function checkCommitInRepo(appSlug, commitSha) {
+  return new Promise((resolve) => {
+    const proc = spawn('kubectl', [
+      'exec',
+      '-n', 'pushr-system',
+      'deployment/pushr-git',
+      '--',
+      'git',
+      `--git-dir=/repos/${appSlug}.git`,
+      'rev-parse',
+      '--verify',
+      `${commitSha}^{commit}`,
+    ]);
+    proc.on('close', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
+  });
+}
+
+/**
+ * Checks if a specific file exists in a commit inside pushr-git pod.
+ */
+function checkFileInCommit(appSlug, commitSha, filename) {
+  return new Promise((resolve) => {
+    const proc = spawn('kubectl', [
+      'exec',
+      '-n', 'pushr-system',
+      'deployment/pushr-git',
+      '--',
+      'git',
+      `--git-dir=/repos/${appSlug}.git`,
+      'cat-file',
+      '-e',
+      `${commitSha}:${filename}`,
+    ]);
+    proc.on('close', (code) => resolve(code === 0));
+    proc.on('error', () => resolve(false));
+  });
+}
+
+/**
+ * Exports or validates a specific git commit from a bare repo.
  * Never builds directly from bare repos.
  *
  * @param {string} repoPath - Path to bare git repository
@@ -13,7 +55,7 @@ const { spawn } = require('child_process');
  * @returns {Promise<{ sourceDir: string, hasDockerfile: boolean, cleanup: () => Promise<void> }>}
  */
 async function exportCommit(repoPath, commitSha, appSlug) {
-  const isTestMode = process.env.TEST_MODE === 'true';
+  const isTestMode = process.env.TEST_MODE === 'true' || fs.existsSync(path.resolve(process.cwd(), '.test_mode'));
   const prefix = path.join(os.tmpdir(), `pushr-build-${commitSha ? commitSha.substring(0, 8) : 'export'}-`);
   const tempDir = await fs.promises.mkdtemp(prefix);
 
@@ -29,48 +71,16 @@ async function exportCommit(repoPath, commitSha, appSlug) {
 
   try {
     let exported = false;
+    let hasDockerfile = false;
 
-    // 1. Export commit from the real bare repo inside pushr-git pod in pushr-system
+    // 1. Check real bare repo inside pushr-git pod in pushr-system
     if (appSlug && commitSha) {
-      try {
-        await new Promise((resolve, reject) => {
-          const gitArchive = spawn('kubectl', [
-            'exec',
-            '-n', 'pushr-system',
-            'deployment/pushr-git',
-            '--',
-            'git',
-            `--git-dir=/repos/${appSlug}.git`,
-            'archive',
-            commitSha,
-          ]);
-
-          const tarExtract = spawn('tar', ['-x', '-C', tempDir]);
-
-          gitArchive.stdout.pipe(tarExtract.stdin);
-
-          let errorOutput = '';
-          gitArchive.stderr.on('data', d => errorOutput += d.toString());
-          tarExtract.stderr.on('data', d => errorOutput += d.toString());
-
-          tarExtract.on('close', code => {
-            if (code === 0) resolve();
-            else reject(new Error(`git archive extract failed (code ${code}): ${errorOutput}`));
-          });
-
-          gitArchive.on('error', reject);
-          tarExtract.on('error', reject);
-        });
-
-        // Verify that files were actually extracted
-        const files = await fs.promises.readdir(tempDir);
-        if (files.length > 0) {
-          exported = true;
-        }
-      } catch (err) {
-        if (!isTestMode) {
-          throw new Error(`Real git archive export failed for '${appSlug}' (commit ${commitSha}): ${err.message}`);
-        }
+      const commitExists = await checkCommitInRepo(appSlug, commitSha);
+      if (commitExists) {
+        hasDockerfile = await checkFileInCommit(appSlug, commitSha, 'Dockerfile');
+        exported = true;
+      } else if (!isTestMode) {
+        throw new Error(`TEST_MODE is disabled and no bare repo exists for app '${appSlug}' (commit ${commitSha})`);
       }
     }
 
@@ -109,11 +119,9 @@ async function exportCommit(repoPath, commitSha, appSlug) {
           await fs.promises.writeFile(pyApp, code);
         }
       }
-    }
 
-    // Detect if Dockerfile exists at the root of the exported source
-    const dockerfilePath = path.join(tempDir, 'Dockerfile');
-    const hasDockerfile = fs.existsSync(dockerfilePath);
+      hasDockerfile = fs.existsSync(path.join(tempDir, 'Dockerfile'));
+    }
 
     return {
       sourceDir: tempDir,

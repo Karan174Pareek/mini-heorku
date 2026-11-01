@@ -134,4 +134,20 @@ router.get('/:slug/status', async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/apps/:slug
+ * Deletes an application, its releases, and its bare repo.
+ */
+router.delete('/:slug', async (req, res) => {
+  try {
+    const slug = req.params.slug;
+    await App.findOneAndDelete({ slug });
+    await Release.deleteMany({ appSlug: slug });
+    await gitServerClient.deleteRepo(slug);
+    res.json({ message: `App '${slug}' deleted successfully` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

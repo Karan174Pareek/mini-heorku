@@ -10,10 +10,10 @@ const buildQueue = require('../services/builder/BuildQueue');
 const { requireInternalSecret } = require('../middleware/auth');
 
 /**
- * POST /api/internal/releases/build
+ * POST /api/internal/releases/build or /build
  * Called by git server post-receive hook.
  */
-router.post('/build', requireInternalSecret, async (req, res) => {
+const handleBuild = async (req, res) => {
   try {
     const { appSlug, commitSha, ref } = req.body;
     if (!appSlug || !commitSha) {
@@ -47,31 +47,69 @@ router.post('/build', requireInternalSecret, async (req, res) => {
     console.error('Error queuing build:', err);
     res.status(500).json({ error: err.message });
   }
-});
+};
+
+router.post('/build', requireInternalSecret, handleBuild);
+router.post('/releases/build', requireInternalSecret, handleBuild);
 
 /**
- * GET /api/internal/releases/:id/tarball
+ * GET /api/internal/releases/:id/tarball or /:id/tarball
  * Streams a tar.gz archive of the exported commit workspace for build Jobs.
  */
-router.get('/:id/tarball', requireInternalSecret, async (req, res) => {
+const handleTarball = async (req, res) => {
   try {
-    const workspaceDir = buildQueue.getWorkspaceDir(req.params.id);
-    if (!workspaceDir || !fs.existsSync(workspaceDir)) {
-      return res.status(404).json({ error: 'Build workspace not active or found' });
+    const release = await Release.findById(req.params.id);
+    if (!release) {
+      return res.status(404).json({ error: 'Release not found' });
     }
 
     res.setHeader('Content-Type', 'application/gzip');
-    res.setHeader('Content-Disposition', `attachment; filename="source-${req.params.id}.tar.gz"`);
+    res.setHeader('Content-Disposition', `attachment; filename="source-${release.shortSha || req.params.id}.tar.gz"`);
 
-    const tar = spawn('tar', ['-czf', '-', '.'], { cwd: workspaceDir });
-    tar.stdout.pipe(res);
-    tar.stderr.on('data', d => console.error('Tar error:', d.toString()));
+    const workspaceDir = buildQueue.getWorkspaceDir(req.params.id);
+    const isTestMode = process.env.TEST_MODE === 'true' || fs.existsSync(path.resolve(process.cwd(), '.test_mode'));
+
+    // 1. If in TEST_MODE with an active sample directory, stream from workspaceDir
+    if (isTestMode && workspaceDir && fs.existsSync(workspaceDir)) {
+      // In TEST_MODE on Windows, package into tar.gz
+      const tar = spawn('tar', ['-czf', '-', '.'], { cwd: workspaceDir });
+      tar.stdout.pipe(res);
+      tar.stderr.on('data', d => console.error('Tar error:', d.toString()));
+      return;
+    }
+
+    // 2. Stream git archive directly from real bare repo inside pushr-git pod
+    if (release.appSlug && release.commitSha) {
+      const gitArchive = spawn('kubectl', [
+        'exec',
+        '-n', 'pushr-system',
+        'deployment/pushr-git',
+        '--',
+        'git',
+        `--git-dir=/repos/${release.appSlug}.git`,
+        'archive',
+        '--format=tar.gz',
+        release.commitSha,
+      ]);
+
+      gitArchive.stdout.pipe(res);
+      gitArchive.stderr.on('data', d => console.error('Git archive error:', d.toString()));
+      gitArchive.on('error', err => {
+        if (!res.headersSent) res.status(500).json({ error: err.message });
+      });
+      return;
+    }
+
+    return res.status(404).json({ error: 'Build workspace not active or found' });
   } catch (err) {
     if (!res.headersSent) {
       res.status(500).json({ error: err.message });
     }
   }
-});
+};
+
+router.get('/:id/tarball', requireInternalSecret, handleTarball);
+router.get('/releases/:id/tarball', requireInternalSecret, handleTarball);
 
 /**
  * POST /api/internal/auth/verify

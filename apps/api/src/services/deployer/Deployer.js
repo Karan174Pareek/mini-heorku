@@ -78,6 +78,7 @@ class Deployer {
         },
         spec: {
           replicas: 2,
+          minReadySeconds: 3,
           strategy: {
             type: 'RollingUpdate',
             rollingUpdate: {
@@ -126,7 +127,7 @@ class Deployer {
                   lifecycle: {
                     preStop: {
                       exec: {
-                        command: ['/bin/sh', '-c', 'sleep 2'],
+                        command: ['/bin/sh', '-c', 'sleep 3'],
                       },
                     },
                   },

@@ -3,12 +3,17 @@ $ErrorActionPreference = "Continue"
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 $env:TEST_MODE = "true"
+Set-Content -Path ".test_mode" -Value "true" -NoNewline
 
 $passCount = 0
 $totalCount = 6
 
 $internalSecret = "pushr_internal_shared_secret_2026"
 $internalHeaders = @{ "X-Pushr-Internal-Secret" = $internalSecret }
+
+# Ensure clean slate for synthetic test apps
+curl.exe -s -X DELETE "http://127.0.0.1:3000/api/apps/node-app" > $null 2>&1
+curl.exe -s -X DELETE "http://127.0.0.1:3000/api/apps/python-app" > $null 2>&1
 
 function Assert-Check {
     param(
@@ -39,7 +44,7 @@ Assert-Check "1. Push node-app: BuildpackBuilder -> queued -> building -> succee
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     $script:firstReleaseId = $releaseId
     Write-Host "Release created with ID: $releaseId"
@@ -48,7 +53,7 @@ Assert-Check "1. Push node-app: BuildpackBuilder -> queued -> building -> succee
     $status = "queued"
     for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Seconds 3
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
         $status = $rel.status
         Write-Host "Release status: $status (strategy: $($rel.strategy))"
         if ($status -eq "succeeded" -or $status -eq "failed") { break }
@@ -75,7 +80,7 @@ Assert-Check "2. Push python-app: DockerfileBuilder -> Kaniko -> succeeded & ima
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     if (-not $script:firstReleaseId) { $script:firstReleaseId = $releaseId }
     Write-Host "Release created with ID: $releaseId"
@@ -83,7 +88,7 @@ Assert-Check "2. Push python-app: DockerfileBuilder -> Kaniko -> succeeded & ima
     $status = "queued"
     for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Seconds 3
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
         $status = $rel.status
         Write-Host "Release status: $status (strategy: $($rel.strategy))"
         if ($status -eq "succeeded" -or $status -eq "failed") { break }
@@ -142,13 +147,13 @@ Assert-Check "4. Broken Dockerfile: release marked failed, log contains real err
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
 
     $status = "queued"
     for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Seconds 3
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
         $status = $rel.status
         if ($status -eq "failed" -or $status -eq "succeeded") { break }
     }
@@ -168,10 +173,10 @@ Assert-Check "5. Push identical SHA again: existing image reused without rebuild
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $newReleaseId = $res.releaseId
 
-    $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$newReleaseId"
+    $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$newReleaseId"
     Write-Host "Idempotency release status: $($rel.status)"
     Write-Host "Idempotency build log: $($rel.buildLog)"
     if ($rel.status -ne "succeeded") {
@@ -188,7 +193,7 @@ Assert-Check "6. Build logs retrievable via SSE endpoint" {
         throw "No successful release ID available from Check 1 or Check 2 to verify SSE"
     }
     Write-Host "Fetching SSE logs for release ($script:firstReleaseId)..."
-    $sseOutput = curl.exe -s -N -H "Accept: text/event-stream" "http://localhost:3000/api/releases/$script:firstReleaseId/build-logs"
+    $sseOutput = curl.exe -s -N -H "Accept: text/event-stream" "http://127.0.0.1:3000/api/releases/$script:firstReleaseId/build-logs"
     Write-Host "SSE stream received:"
     Write-Host $sseOutput
     if ($LASTEXITCODE -ne 0 -or -not $sseOutput) {
@@ -202,6 +207,8 @@ Assert-Check "6. Build logs retrievable via SSE endpoint" {
 Write-Host "`n==========================================" -ForegroundColor Magenta
 Write-Host "Phase 3 Verification Results: $passCount / $totalCount checks passed" -ForegroundColor $(if ($passCount -eq $totalCount) { "Green" } else { "Red" })
 Write-Host "==========================================" -ForegroundColor Magenta
+
+Remove-Item -Force ".test_mode" -ErrorAction SilentlyContinue
 
 if ($passCount -ne $totalCount) {
     exit 1

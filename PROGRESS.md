@@ -9,7 +9,7 @@ Tracking implementation phases, verification outputs, and known issues.
 | Phase | Description | Status | Verification Status | Notes |
 |---|---|---|---|---|
 | **Phase 1** | Infra bootstrap (k3d cluster, local registry, Traefik, cert-manager, `make up`/`down`) | ✅ Verified | 4/4 Checks Passed | k3d cluster `pushr`, cert-manager v1.16.2, ClusterIssuer, registry on host:5001 / cluster:5000 verified. |
-| **Phase 2** | Git server (Smart HTTP, bare repos, token auth, post-receive hook) | ⚠️ NOT Verified | Not verified | ADR written only (ADR 3). No git server container, hook, or token auth tested. **TODO: Real `git push` end-to-end test before Phase 5.** |
+| **Phase 2** | Git server (Smart HTTP, bare repos, token auth, post-receive hook) | ✅ Verified | 10/10 Checks Passed | Linux container Smart HTTP git-server in `pushr-system`, token auth, async post-receive hook, auto-build, rolling update verified. |
 | **Phase 3** | Builder (Dockerfile detection vs Buildpacks, registry push, log capture) | ✅ Verified | 6/6 Checks Passed | Builder interface, Kaniko/Paketo strategies, queue, SSE logs, sample apps verified. |
 | **Phase 4** | Deployer (Deployment/Service/Ingress, rolling update, probes, TLS) | ✅ Verified | 6/6 Checks Passed | Per-app namespace isolation, rolling update zero-downtime, probe failure handling, idempotent apply verified. |
 | **Phase 5** | Releases, rollback, auto-rollback, env vars | ⬜ Not Started | - | Awaiting Phase 4 completion |
@@ -82,10 +82,74 @@ Verification Results: 4 / 4 checks passed
 
 ## Phase 2: Git Server Subsystem
 
-### Status
-⚠️ **NOT Verified**: Architecture Decision Record (ADR 3) written defining containerized Linux Git server, POSIX hooks, and API notification contract. No git server container, smart HTTP endpoint, git hook execution, or token authentication has been tested or verified yet.
+### Done
+- Created containerized Linux Git server (`apps/git-server/Dockerfile`) with `git-daemon` (`git-http-backend`) and Express wrapper in `pushr-system` namespace.
+- Implemented persistent repository storage on PVC `/repos` (`pushr-git-repos`).
+- Implemented HTTP Basic authentication with constant-time token verification (`crypto.timingSafeEqual`) and SHA-256 token hashing (`gitTokenHash`).
+- Configured public ingress `git.pushr.localhost` routing strictly Git Smart HTTP endpoints (`/*/info/refs`, `/*-upload-pack`, `/*-receive-pack`) while blocking internal management endpoints (returning 404).
+- Implemented executable POSIX LF `post-receive` hook template dispatching asynchronous `POST /api/internal/releases/build` calls with `X-Pushr-Internal-Secret` protection, returning `git push` in < 5 seconds.
+- Integrated branch filtering: non-main branch pushes are accepted by Git server but ignored by post-receive hook (0 builds triggered).
+- Updated source checkout and tarball endpoints to pull commits directly from the real bare Git repos (`pushr-git` pod) via `git archive`.
+- Isolated test-only synthetic fallbacks behind explicit `TEST_MODE=true` flag.
+- Re-verified backward compatibility: Phase 3 (6/6) and Phase 4 (6/6) verification suites pass with internal secret.
 
-> **TODO before Phase 5**: Implement containerized Git Smart HTTP server with automated end-to-end `git push` test covering authentication, repo storage volume, and post-receive hook dispatch.
+### Verification Output (`infra/tests/verify-phase2.ps1`)
+
+```text
+==========================================================
+ [PHASE 2 VERIFICATION] REAL GIT SERVER & PIPELINE
+ Configuration: TEST_MODE=unset (Real repos & containers only)
+==========================================================
+
+[Check 1/10] Verifying sample fallback is unreachable when TEST_MODE is unset...
+  [PASS] Fallback correctly blocked: Release failed with 'TEST_MODE is disabled and no bare repo exists for app 'nonexistent-synthetic-app' (commit deadbeef12345678)'
+
+[Check 2/10] Verifying internal endpoints return 401 without shared secret...
+  [PASS] All internal endpoints return 401 Unauthorized without X-Pushr-Internal-Secret (401, 401, 401, 401)
+
+[Check 3/10] Verifying public git Ingress blocks /internal/* paths...
+  [PASS] Public Ingress correctly blocks /internal/* paths with HTTP 404
+
+[Check 4/10] Creating app 'node-app-phase2' via POST /api/apps...
+  [PASS] App created with push token: pushr_tok_73cf6f2c... and gitUrl: http://git.pushr.localhost/node-app-phase2.git
+
+[Check 5/10] Inspecting post-receive hook inside pushr-git pod...
+-rwxr-xr-x    1 root     root           885 Nov  1 12:40 /repos/node-app-phase2.git/hooks/post-receive /repos/node-app-phase2.git/hooks/post-receive: POSIX shell script, ASCII text executable
+  [PASS] Hook in pod is executable (-rwxr-xr-x) and POSIX LF format (no CRLF)
+
+[Check 6/10] Verifying push with wrong token is rejected (401)...
+  [PASS] Push with wrong token rejected immediately (no release created)
+
+[Check 7/10] Verifying push to non-main branch (feature-test) triggers no build...
+  [PASS] Push to feature-test accepted by git server but skipped by post-receive hook (0 releases created)
+
+[Check 8/10] Verifying git push main returns under 5s, builds real commit, and auto-deploys...
+  Push completed in: 0.36s
+remote: [Pushr] Received push: refs/heads/main (0000000000000000000000000000000000000000 -> 683aecb39b3c02f257c46bd49699ec5853586683)
+remote: [Pushr] Enqueuing build for app 'node-app-phase2' (commit 683aecb39b3c02f257c46bd49699ec5853586683)...
+remote: [Pushr] Build queued asynchronously for commit 683aecb39b3c02f257c46bd49699ec5853586683.
+  [PASS] git push returned asynchronously in under 5 seconds (0.36s)
+  [PASS] Build succeeded for exact commit SHA 683aecb
+  [PASS] Release auto-deployed successfully
+  [PASS] Live app serving at https://node-app-phase2.pushr.localhost/health (status: ok, app: node-app)
+
+[Check 9/10] Verifying second commit via git push -> zero-downtime rolling update...
+  Push v2 output: remote: [Pushr] Received push: refs/heads/main
+  Rollout requests: 77 / 77 returned 200 (100%)
+  Live app root body: Hello from Pushr Node App v2!
+  [PASS] Rolling update for second commit succeeded with 100% 200 OK during update (serving: 'Hello from Pushr Node App v2!')
+
+[Check 10/10] Re-verifying Phase 3 and Phase 4 tests with internal secret...
+--- Running verify-phase3.ps1 (TEST_MODE=true) ---
+Phase 3 Verification Results: 6 / 6 checks passed
+--- Running verify-phase4.ps1 (TEST_MODE=true) ---
+Phase 4 Verification Results: 6 / 6 checks passed
+  [PASS] Both Phase 3 and Phase 4 test suites pass 100% with internal secret protection
+
+==========================================================
+ ALL 10 / 10 PHASE 2 VERIFICATION CHECKS PASSED!
+==========================================================
+```
 
 ---
 

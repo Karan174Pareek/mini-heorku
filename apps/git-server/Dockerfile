@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-RUN apk add --no-cache git curl bash file
+RUN apk add --no-cache git git-daemon curl bash file
 
 WORKDIR /app
 

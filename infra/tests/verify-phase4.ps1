@@ -3,6 +3,7 @@ $ErrorActionPreference = "Continue"
 
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 $env:TEST_MODE = "true"
+Set-Content -Path ".test_mode" -Value "true" -NoNewline
 
 $passCount = 0
 $totalCount = 6
@@ -39,7 +40,7 @@ Assert-Check "1. Push node-app: auto-deploy -> https://node-app.pushr.localhost 
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     $script:nodeReleaseId1 = $releaseId
     Write-Host "Release created with ID: $releaseId"
@@ -49,7 +50,7 @@ Assert-Check "1. Push node-app: auto-deploy -> https://node-app.pushr.localhost 
     $deployStatus = "pending"
     for ($i = 0; $i -lt 80; $i++) {
         Start-Sleep -Seconds 3
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
         $buildStatus = $rel.status
         $deployStatus = $rel.deployStatus
         Write-Host "Release build: $buildStatus, deploy: $deployStatus"
@@ -98,7 +99,7 @@ Assert-Check "2. Push new commit: concurrent curl loop during rollout confirms z
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     $script:nodeReleaseId2 = $releaseId
     Write-Host "Second release created with ID: $releaseId"
@@ -122,7 +123,7 @@ Assert-Check "2. Push new commit: concurrent curl loop during rollout confirms z
         }
 
         # Check release status
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
         if ($rel.deployStatus -eq "deployed" -or $rel.deployStatus -eq "failed") {
             $done = $true
         }
@@ -138,7 +139,7 @@ Assert-Check "2. Push new commit: concurrent curl loop during rollout confirms z
         throw "Expected at least 20 requests during rollout window, only got $($codes.Count)"
     }
 
-    $finalRel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+    $finalRel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
     if ($finalRel.deployStatus -ne "deployed") {
         throw "Second rollout did not succeed. Final deployStatus: $($finalRel.deployStatus)"
     }
@@ -154,14 +155,14 @@ Assert-Check "3. Deploy python-app: both apps reachable simultaneously at distin
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $releaseId = $res.releaseId
     $script:pythonReleaseId = $releaseId
     Write-Host "Release created with ID: $releaseId"
 
     for ($i = 0; $i -lt 80; $i++) {
         Start-Sleep -Seconds 3
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$releaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$releaseId"
         if ($rel.status -eq "failed" -or $rel.deployStatus -eq "failed") { break }
         if ($rel.status -eq "succeeded" -and $rel.deployStatus -eq "deployed") { break }
     }
@@ -202,14 +203,14 @@ Assert-Check "4. Broken readiness probe: detected as failed, previous working po
         ref = "refs/heads/main"
     } | ConvertTo-Json
 
-    $res = Invoke-RestMethod -Uri "http://localhost:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
+    $res = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/internal/releases/build" -Method Post -Body $body -ContentType "application/json" -Headers $internalHeaders
     $failingReleaseId = $res.releaseId
     Write-Host "Failing release created with ID: $failingReleaseId"
 
     $deployStatus = "pending"
     for ($i = 0; $i -lt 50; $i++) {
         Start-Sleep -Seconds 3
-        $rel = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$failingReleaseId"
+        $rel = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$failingReleaseId"
         $deployStatus = $rel.deployStatus
         Write-Host "Failing release build: $($rel.status), deploy: $deployStatus"
         if ($deployStatus -eq "failed") { break }
@@ -237,7 +238,7 @@ Assert-Check "5. Idempotent apply: re-deploy release twice -> identical state, n
     if (-not $targetReleaseId) { $targetReleaseId = $script:nodeReleaseId1 }
     Write-Host "Re-deploying release $targetReleaseId via POST /api/releases/$targetReleaseId/deploy..."
 
-    $deploy1 = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$targetReleaseId/deploy" -Method Post -Headers $internalHeaders
+    $deploy1 = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$targetReleaseId/deploy" -Method Post -Headers $internalHeaders
     Write-Host "First deploy result: $($deploy1 | ConvertTo-Json -Compress)"
 
     # Wait for deployment to settle and any old pods from previous tests to clear
@@ -255,7 +256,7 @@ Assert-Check "5. Idempotent apply: re-deploy release twice -> identical state, n
     Write-Host "Pods before second deploy: $($podNamesBefore -join ', ')"
 
     # Trigger second deploy of identical release
-    $deploy2 = Invoke-RestMethod -Uri "http://localhost:3000/api/releases/$targetReleaseId/deploy" -Method Post -Headers $internalHeaders
+    $deploy2 = Invoke-RestMethod -Uri "http://127.0.0.1:3000/api/releases/$targetReleaseId/deploy" -Method Post -Headers $internalHeaders
     Write-Host "Second deploy result: $($deploy2 | ConvertTo-Json -Compress)"
 
     # Wait a few seconds to verify pods are untouched
@@ -299,9 +300,14 @@ Assert-Check "5. Idempotent apply: re-deploy release twice -> identical state, n
     }
 
     # Verify app is still 100% healthy
-    $resp = curl.exe -k -s -w "`nHTTP_STATUS:%{http_code}" --resolve "node-app.pushr.localhost:443:127.0.0.1" https://node-app.pushr.localhost/health
+    $resp = ""
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        $resp = curl.exe -k -s -w "`nHTTP_STATUS:%{http_code}" --resolve "node-app.pushr.localhost:443:127.0.0.1" https://node-app.pushr.localhost/health
+        if (($resp -join "`n") -match "HTTP_STATUS:200") { break }
+        Start-Sleep -Seconds 1
+    }
     if (($resp -join "`n") -notmatch "HTTP_STATUS:200") {
-        throw "App is not healthy after idempotent re-deploy"
+        throw "App is not healthy after idempotent re-deploy ($resp)"
     }
     Write-Host "Idempotency confirmed: objects cleanly updated, pod identities and restart counts preserved, app fully healthy."
 }
@@ -354,6 +360,8 @@ Assert-Check "6. Per-app namespace isolation: apps-<slug> contains its own Deplo
 Write-Host "`n==========================================" -ForegroundColor Magenta
 Write-Host "Phase 4 Verification Results: $passCount / $totalCount checks passed" -ForegroundColor $(if ($passCount -eq $totalCount) { "Green" } else { "Red" })
 Write-Host "==========================================" -ForegroundColor Magenta
+
+Remove-Item -Force ".test_mode" -ErrorAction SilentlyContinue
 
 if ($passCount -ne $totalCount) {
     exit 1
